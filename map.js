@@ -1,300 +1,195 @@
-/* map.js
-   Browser viewer for Cloud-Optimized GeoTIFFs (COGs)
-   - Renders selected variable/depth as a Leaflet GridLayer
-   - Samples a pixel value on click and displays scaled unit
-   NOTE: Requires GeoTIFF global (geotiff.browser.min.js) loaded before this file.
-*/
+// -------------------------------------------------------
+// CONFIG
+// -------------------------------------------------------
 
-// --- Configuration: base URL where your COGs are hosted (GitHub Pages recommended)
-const repoBase = 'https://kazumarkn.github.io/Indonesian-Soil-Macronutrients/cogs/';
+// Base URL where your TN/TP/TK GeoTIFFs are hosted
+const COG_BASE_URL = "https://kazumarkn.github.io/Indonesian-Soil-Macronutrients/cogs/";
 
-// --- UI elements
-const variableEl = document.getElementById('variable');
-const depthEl = document.getElementById('depth');
-const opacityEl = document.getElementById('opacity');
-const loadBtn = document.getElementById('loadBtn');
-const clearBtn = document.getElementById('clearBtn');
-const sampleValueEl = document.getElementById('sampleValue');
-const unitsTextEl = document.getElementById('unitsText');
+// Variables
+const VARIABLES = ["TN", "TP", "TK"];
 
-// --- variable metadata (multiplier and unit)
-const variableMeta = {
-  TN: { multiplier: 0.01, unit: '% w/w', desc: 'TN: value × 0.01 → percent of weight' },
-  TP: { multiplier: 0.001, unit: '% w/w', desc: 'TP: value × 0.001 → percent of weight' },
-  TK: { multiplier: 0.01, unit: '% w/w', desc: 'TK: value × 0.01 → percent of weight' }
+// Depths
+const DEPTHS = ["K1", "K2", "K3", "K4"];
+
+// Multipliers for displayed value
+const MULTIPLIERS = {
+  "TN": 0.01,   // % w/w
+  "TP": 0.001,  // % w/w
+  "TK": 0.01    // % w/w
 };
 
-// --- map init
-const map = L.map('map').setView([0, 115], 4);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
 
-// --- helper: filename generator
-function filenameFor(variable, depth) {
-  const ranges = {
-    K1: '000-045cm',
-    K2: '046-091cm',
-    K3: '092-116cm',
-    K4: '117-289cm'
-  };
-  const r = ranges[depth] || ranges.K1;
-  return `${variable}_${depth}_${r}.tif`;
+// -------------------------------------------------------
+// UI AND MAP
+// -------------------------------------------------------
+
+const map = L.map("map", { center: [-2.0, 118], zoom: 5 });
+
+// ESRI satellite
+L.tileLayer(
+  "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 18, attribution: "ESRI World Imagery" }
+).addTo(map);
+
+let geoLayer = null;
+let currentFilename = "";
+
+// DOM references
+const varSelect = document.getElementById("variableSelect");
+const depthSelect = document.getElementById("depthSelect");
+const loadBtn = document.getElementById("loadBtn");
+const opacityRange = document.getElementById("opacityRange");
+
+
+// -------------------------------------------------------
+// Filename + URL builder
+// -------------------------------------------------------
+function buildFilename(variable, depth) {
+  // Example: TN_K1.tif
+  return `${variable}_${depth}.tif`;
 }
-function cogUrlFor(variable, depth) {
-  return repoBase + filenameFor(variable, depth);
+function buildURL(filename) {
+  return COG_BASE_URL + filename;
 }
 
-// --- show units
-function updateUnitsText() {
-  const v = variableEl.value;
-  unitsTextEl.textContent = `${variableMeta[v].desc} — displayed unit: ${variableMeta[v].unit}`;
-}
-updateUnitsText();
-variableEl.addEventListener('change', updateUnitsText);
 
-// --- GeoTIFF cache (avoid reopening same file)
-const tiffCache = new Map(); // url -> {tiff, image, width, height, bbox}
-
-/** openGeoTIFF(url) -> returns {tiff, image, width, height, bbox} and caches */
-async function openGeoTIFF(url) {
-  if (tiffCache.has(url)) return tiffCache.get(url);
-
-  if (typeof GeoTIFF === 'undefined') throw new Error('GeoTIFF is not defined — ensure geotiff.browser.min.js is loaded');
-
-  // Use GeoTIFF.fromUrl which supports range requests for COGs
-  const tiff = await GeoTIFF.fromUrl(url);
-  const image = await tiff.getImage(); // first image
-  const width = image.getWidth();
-  const height = image.getHeight();
-  // bounding box [minX, minY, maxX, maxY]
-  let bbox;
+// -------------------------------------------------------
+// Test whether file is accessible
+// -------------------------------------------------------
+async function testURL(url) {
   try {
-    bbox = image.getBoundingBox();
-  } catch (e) {
-    // fallback: attempt to read tie points / geoTransform
-    throw new Error('Unable to read bounding box from GeoTIFF. Make sure GeoTIFF includes georeference.');
+    const head = await fetch(url, { method: "HEAD" });
+    return { ok: head.ok };
+  } catch {
+    return { ok: false };
   }
-
-  const info = { tiff, image, width, height, bbox };
-  tiffCache.set(url, info);
-  return info;
 }
 
-/** Converts lat/lon to pixel coordinates (px, py) in raster coordinates */
-function latLonToPixel(lon, lat, bbox, width, height) {
-  const [minX, minY, maxX, maxY] = bbox;
-  const x = (lon - minX) / (maxX - minX) * width;
-  const y = (maxY - lat) / (maxY - minY) * height; // y origin top
-  return { px: Math.floor(x), py: Math.floor(y) };
-}
 
-/** sampleGeoTIFFAtLatLng(url, lat, lon) -> returns raw value (band 1) or null */
-async function sampleGeoTIFFAtLatLng(url, lat, lon) {
-  const info = await openGeoTIFF(url);
-  const { image, width, height, bbox } = info;
-  const { px, py } = latLonToPixel(lon, lat, bbox, width, height);
+// -------------------------------------------------------
+// Load + Display GeoTIFF
+// -------------------------------------------------------
+async function loadAndDisplay(variable, depth) {
+  const filename = buildFilename(variable, depth);
+  const url = buildURL(filename);
+  currentFilename = filename;
 
-  if (px < 0 || py < 0 || px >= width || py >= height) return null;
+  loadBtn.innerText = "Loading...";
+  loadBtn.disabled = true;
 
-  // read one pixel window
-  const rasters = await image.readRasters({ window: [px, py, px + 1, py + 1] });
-  const band0 = rasters[0];
-  if (!band0 || band0.length === 0) return null;
-  return band0[0];
-}
-
-/** createGeoTiffGridLayer(url, options) -> returns a Leaflet GridLayer */
-async function createGeoTiffGridLayer(url, options = {}) {
-  const info = await openGeoTIFF(url);
-  const { image, width, height, bbox } = info;
-  const tileSize = options.tileSize || 256;
-  const opacity = options.opacity ?? 1;
-
-  // small helper to compute window for a tile
-  function tileWindow(tileBounds) {
-    const nw = tileBounds.getNorthWest();
-    const se = tileBounds.getSouthEast();
-
-    // tile lon/lat bounds
-    const lonMin = Math.max(nw.lng, bbox[0]);
-    const lonMax = Math.min(se.lng, bbox[2]);
-    const latMax = Math.min(nw.lat, bbox[3]);
-    const latMin = Math.max(se.lat, bbox[1]);
-
-    if (lonMax <= lonMin || latMax <= latMin) return null;
-
-    const x0 = (lonMin - bbox[0]) / (bbox[2] - bbox[0]) * width;
-    const x1 = (lonMax - bbox[0]) / (bbox[2] - bbox[0]) * width;
-    const y0 = (bbox[3] - latMax) / (bbox[3] - bbox[1]) * height;
-    const y1 = (bbox[3] - latMin) / (bbox[3] - bbox[1]) * height;
-
-    // integer window in raster coords
-    const wx0 = Math.max(0, Math.floor(x0));
-    const wy0 = Math.max(0, Math.floor(y0));
-    const wx1 = Math.min(width, Math.ceil(x1));
-    const wy1 = Math.min(height, Math.ceil(y1));
-
-    return { wx0, wy0, wx1, wy1, x0, x1, y0, y1 };
-  }
-
-  const grid = L.gridLayer({
-    tileSize,
-    maxZoom: 12,
-    createTile: function(coords, done) {
-      const canvas = document.createElement('canvas');
-      canvas.width = tileSize; canvas.height = tileSize;
-      const ctx = canvas.getContext('2d');
-
-      // compute tile bounds in lat/lng
-      const nwPoint = coords.multiplyBy(tileSize);
-      const sePoint = nwPoint.add([tileSize, tileSize]);
-      const nw = map.unproject(nwPoint, coords.z);
-      const se = map.unproject(sePoint, coords.z);
-      const tileBounds = L.latLngBounds(se, nw); // careful: LatLngBounds(southWest, northEast)
-
-      const win = tileWindow(tileBounds);
-      if (!win) {
-        done(null, canvas); // tile outside raster
-        return canvas;
-      }
-
-      const { wx0, wy0, wx1, wy1 } = win;
-      const winW = Math.max(1, wx1 - wx0);
-      const winH = Math.max(1, wy1 - wy0);
-
-      // read and resample to tileSize to draw quickly
-      image.readRasters({
-        window: [wx0, wy0, wx1, wy1],
-        width: tileSize,
-        height: tileSize,
-        resampleMethod: 'bilinear'
-      }).then(rasters => {
-        const band = rasters[0];
-        // compute min/max for this tile for simple stretch
-        let minv = Infinity, maxv = -Infinity;
-        for (let i = 0; i < band.length; i++) {
-          const v = band[i];
-          if (v == null || Number.isNaN(v)) continue;
-          if (v < minv) minv = v;
-          if (v > maxv) maxv = v;
-        }
-        if (!isFinite(minv) || !isFinite(maxv) || minv === maxv) {
-          // nothing to draw (no-data or constant)
-          done(null, canvas);
-          return;
-        }
-
-        const img = ctx.createImageData(tileSize, tileSize);
-        for (let i = 0; i < band.length; i++) {
-          const v = band[i];
-          const idx = i * 4;
-          if (v == null || Number.isNaN(v)) {
-            img.data[idx + 0] = 0;
-            img.data[idx + 1] = 0;
-            img.data[idx + 2] = 0;
-            img.data[idx + 3] = 0; // transparent
-          } else {
-            const norm = (v - minv) / (maxv - minv);
-            const c = Math.round(255 * norm);
-            img.data[idx + 0] = c;
-            img.data[idx + 1] = c;
-            img.data[idx + 2] = c;
-            img.data[idx + 3] = Math.round(255 * opacity);
-          }
-        }
-        ctx.putImageData(img, 0, 0);
-        done(null, canvas);
-      }).catch(err => {
-        console.error('readRasters error', err);
-        done(err, canvas);
-      });
-
-      return canvas;
-    }
-  });
-
-  // expose a convenience method to change opacity easily
-  grid.setOpacity = function(op) {
-    this.options.opacity = op;
-    // Leaflet will redraw tiles automatically if you call redraw
-    this.redraw();
-  };
-
-  return grid;
-}
-
-// --- active layer bookkeeping
-let activeLayer = null;
-let activeLayerMeta = null;
-
-// load button
-loadBtn.addEventListener('click', async () => {
-  const variable = variableEl.value;
-  const depth = depthEl.value;
-  const url = cogUrlFor(variable, depth);
-  const opacity = Math.max(0, Math.min(1, opacityEl.value / 100));
-
-  // remove previous
-  if (activeLayer) {
-    map.removeLayer(activeLayer);
-    activeLayer = null;
-    activeLayerMeta = null;
-  }
-
-  // Try to create and add the COG layer
-  try {
-    const layer = await createGeoTiffGridLayer(url, { opacity });
-    layer.addTo(map);
-    activeLayer = layer;
-    activeLayerMeta = { url, variable };
-    // zoom to study area if bbox available
-    const info = await openGeoTIFF(url);
-    const [minX, minY, maxX, maxY] = info.bbox;
-    const southWest = L.latLng(minY, minX);
-    const northEast = L.latLng(maxY, maxX);
-    map.fitBounds(L.latLngBounds(southWest, northEast), { maxZoom: 10 });
-  } catch (err) {
-    alert('Failed to load COG: ' + (err.message || err) + '\nCheck that the URL is reachable and that COG supports range requests (host on GitHub Pages or S3).');
-    console.error(err);
-  }
-});
-
-// clear button
-clearBtn.addEventListener('click', () => {
-  if (activeLayer) {
-    map.removeLayer(activeLayer);
-    activeLayer = null;
-    activeLayerMeta = null;
-  }
-  sampleValueEl.textContent = '—';
-});
-
-// opacity slider live
-opacityEl.addEventListener('input', () => {
-  const op = Math.max(0, Math.min(1, opacityEl.value / 100));
-  if (activeLayer) activeLayer.setOpacity(op);
-});
-
-// map click -> sample value
-map.on('click', async (e) => {
-  if (!activeLayerMeta) {
-    sampleValueEl.textContent = 'No layer loaded';
+  const t = await testURL(url);
+  if (!t.ok) {
+    alert("COG not found:\n" + url);
+    loadBtn.innerText = "Load / Refresh";
+    loadBtn.disabled = false;
     return;
   }
-  const { url, variable } = activeLayerMeta;
+
   try {
-    const raw = await sampleGeoTIFFAtLatLng(url, e.latlng.lat, e.latlng.lng);
-    if (raw === null || Number.isNaN(raw)) {
-      sampleValueEl.textContent = 'No data';
-      return;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("Could not download.");
+
+    const arrayBuffer = await resp.arrayBuffer();
+    const georaster = await parseGeoraster(arrayBuffer);
+
+    if (geoLayer) {
+      map.removeLayer(geoLayer);
+      geoLayer = null;
     }
-    const meta = variableMeta[variable];
-    const scaled = raw * meta.multiplier;
-    sampleValueEl.textContent = `${scaled.toFixed(4)} ${meta.unit} (raw=${raw})`;
+
+    geoLayer = new GeoRasterLayer({
+      georaster,
+      opacity: parseFloat(opacityRange.value),
+      resolution: 256,
+
+      // Simple continuous color ramp
+      pixelValuesToColorFn: values => {
+        const v = values[0];
+        if (v == null || isNaN(v)) return null;
+
+        const min = georaster.mins ? georaster.mins[0] : 0;
+        const max = georaster.maxs ? georaster.maxs[0] : 1;
+
+        const t = (v - min) / (max - min);
+        const c = Math.max(0, Math.min(1, t));
+
+        const r = Math.floor(255 * c);
+        const g = Math.floor(255 * (1 - Math.abs(c - 0.5) * 2));
+        const b = Math.floor(255 * (1 - c));
+        return `rgb(${r},${g},${b})`;
+      }
+    });
+
+    geoLayer.addTo(map);
+
+    try { map.fitBounds(geoLayer.getBounds()); } catch (e) {}
+
+    map.off("click", onMapClick);
+    map.on("click", onMapClick);
+
   } catch (err) {
     console.error(err);
-    sampleValueEl.textContent = 'Err';
+    alert("Failed to load raster.");
+  }
+
+  loadBtn.innerText = "Load / Refresh";
+  loadBtn.disabled = false;
+}
+
+
+// -------------------------------------------------------
+// Click – show pixel values
+// -------------------------------------------------------
+async function onMapClick(evt) {
+  if (!geoLayer || !geoLayer.getValueAtLatLng) return;
+
+  try {
+    const rawVal = await geoLayer.getValueAtLatLng(evt.latlng.lat, evt.latlng.lng);
+
+    const variable = varSelect.value;
+    const multiplier = MULTIPLIERS[variable] || 1;
+
+    const processedVal = rawVal * multiplier;
+
+    let unit = "% w/w";
+
+    const content = `
+      <b>${variable} at ${depthSelect.value}</b><br>
+      Raw: ${rawVal}<br>
+      Converted: ${processedVal.toFixed(4)} ${unit}<br>
+      <small>${currentFilename}</small>
+    `;
+
+    L.popup()
+      .setLatLng(evt.latlng)
+      .setContent(content)
+      .openOn(map);
+
+  } catch (err) {
+    console.warn("Cannot read pixel", err);
+  }
+}
+
+
+// -------------------------------------------------------
+// UI Bindings
+// -------------------------------------------------------
+loadBtn.addEventListener("click", () => {
+  loadAndDisplay(varSelect.value, depthSelect.value);
+});
+
+opacityRange.addEventListener("input", () => {
+  if (geoLayer && geoLayer.setOpacity) {
+    geoLayer.setOpacity(parseFloat(opacityRange.value));
   }
 });
+
+
+// -------------------------------------------------------
+// Initial load
+// -------------------------------------------------------
+(function init() {
+  varSelect.value = "TN";
+  depthSelect.value = "K1";
+  loadBtn.click();
+})();
