@@ -1,97 +1,95 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Indonesian Soil Macronutrients (COG Viewer)</title>
+<meta charset="UTF-8" />
+<title>Indonesian Soil Macronutrients Viewer</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <style>
-    body,html { margin:0; padding:0; height:100%; }
-    #map { position:absolute; top:0; left:0; right:0; bottom:0; }
-   
-    #panel {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 10000;
-      background: rgba(255,255,255,0.95);
-      padding: 10px;
-      border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      font-family: Arial, sans-serif;
-      min-width: 220px;
-    }
+<!-- GeoTIFF + GeoRaster -->
+<script src="https://unpkg.com/geotiff@2.1.3/dist-browser/geotiff.browser.min.js"></script>
+<script src="https://unpkg.com/georaster/dist/georaster.browser.min.js"></script>
+<script src="https://unpkg.com/georaster-layer-for-leaflet/dist/georaster-layer-for-leaflet.browser.min.js"></script>
 
-    #panel label { 
-      display:block; 
-      font-size:12px; 
-      margin-top:6px; 
-      color:#333; 
-    }
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+  #map {
+    width: 100%;
+    height: 100%;
+  }
 
-    #panel select, 
-    #panel input[type="range"] { 
-      width:100%; 
-      margin-top:6px; 
-    }
+  /* UI container */
+  #controls {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 9999;
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    line-height: 1.6;
+  }
 
-    #credits { 
-      position: absolute; 
-      right: 10px; 
-      bottom: 10px; 
-      z-index:9999; 
-      background:rgba(255,255,255,0.8); 
-      padding:6px; 
-      border-radius:4px; 
-      font-size:12px; 
-    }
-  </style>
+  #legend {
+    position:absolute;
+    bottom:20px;
+    left:20px;
+    z-index:9999;
+    background:white;
+    padding:10px;
+    border-radius:6px;
+    font-size:12px;
+    font-family:Arial;
+    box-shadow:0 2px 6px rgba(0,0,0,0.25);
+  }
+</style>
+
 </head>
-
 <body>
-  <div id="panel">
 
-    <label>Variable</label>
-    <select id="variableSelect">
-      <option value="TN">TN (Total Nitrogen)</option>
-      <option value="TP">TP (Total Phosphorus)</option>
-      <option value="TK">TK (Total Potassium)</option>
-    </select>
+<div id="map"></div>
 
-    <label>Depth</label>
-    <select id="depthSelect">
-      <option value="K1">K1 (000–045 cm)</option>
-      <option value="K2">K2 (046–091 cm)</option>
-      <option value="K3">K3 (092–116 cm)</option>
-      <option value="K4">K4 (117–289 cm)</option>
-    </select>
+<!-- UI Panel -->
+<div id="controls">
+  <label>Variable:</label><br>
+  <select id="variableSelect">
+    <option value="TN">TN (Total Nitrogen)</option>
+    <option value="TP">TP (Total Phosphorus)</option>
+    <option value="TK">TK (Total Potassium)</option>
+  </select>
+  <br><br>
 
-    <label style="margin-top:8px">Opacity</label>
-    <input id="opacityRange" type="range" min="0" max="1" step="0.01" value="0.85">
+  <label>Soil Depth Layer:</label><br>
+  <select id="depthSelect">
+    <option value="K1">K1 (0–45 cm)</option>
+    <option value="K2">K2 (46–91 cm)</option>
+    <option value="K3">K3 (92–116 cm)</option>
+    <option value="K4">K4 (117–289 cm)</option>
+  </select>
+  <br><br>
 
-    <button id="loadBtn" style="margin-top:8px; width:100%;">Load / Refresh</button>
+  <label>Opacity:</label><br>
+  <input id="opacityRange" type="range" min="0" max="1" step="0.05" value="0.75">
+  <br><br>
 
-    <p style="font-size:11px; margin-top:10px; color:#444;">
-      Units:<br>
-      TN = value × 0.01 % w/w<br>
-      TP = value × 0.001 % w/w<br>
-      TK = value × 0.01 % w/w
-    </p>
-  </div>
+  <button id="loadBtn">Load / Refresh</button>
+</div>
 
-  <div id="map"></div>
+<!-- Legend box -->
+<div id="legend"></div>
 
-  <div id="credits">Basemap: ESRI Satellite</div>
-
-  <!-- Libraries -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/geotiff/dist/geotiff.browser.min.js"></script>
-  <script src="https://unpkg.com/georaster/dist/georaster.browser.min.js"></script>
-  <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
-
-  <!-- Your script -->
-  <script src="map.js"></script>
+<!-- Map script -->
+<script src="map.js"></script>
 
 </body>
 </html>
