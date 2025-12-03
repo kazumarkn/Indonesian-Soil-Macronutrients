@@ -1,68 +1,40 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
   <meta charset="utf-8" />
-  <title>Global soil macronutrients — viewer</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="" crossorigin=""/>
-
+  <title>Global Soil Macronutrients</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.browser.min.js"></script>
   <style>
-    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
-    #map { position: absolute; top: 120px; bottom: 0; left: 0; right: 0; }
-    header { padding: 12px; background: #0b5; color: #042; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    .control { display:flex; gap:8px; align-items:center; }
-    .control label { font-size: 14px; margin-right:4px; color: #042; }
-    .control select, .control input[type="range"], .control button { font-size: 14px; padding:6px; }
-    #info { margin-left: auto; text-align:right; font-size:13px; color:#034; }
-    #sampleValue { font-weight:700; }
-    .small { font-size:12px; color:#033; }
-    .legend { background: rgba(255,255,255,0.9); padding:6px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+    #map { height: 95vh; }
+    .control-panel { padding: 10px; background: white; }
   </style>
 </head>
 <body>
-  <header>
-    <div class="control">
-      <label for="variable">Variable</label>
-      <select id="variable">
-        <option value="TN">TN (Total Nitrogen)</option>
-        <option value="TP">TP (Total Phosphorus)</option>
-        <option value="TK">TK (Total Potassium)</option>
-      </select>
-    </div>
+  <div class="control-panel">
+    <label>Variable:</label>
+    <select id="variable">
+      <option value="TN">TN</option>
+      <option value="TP">TP</option>
+      <option value="TK">TK</option>
+    </select>
 
-    <div class="control">
-      <label for="depth">Depth</label>
-      <select id="depth">
-        <option value="K1">K1 (000-045 cm)</option>
-        <option value="K2">K2 (046-091 cm)</option>
-        <option value="K3">K3 (092-116 cm)</option>
-        <option value="K4">K4 (117-289 cm)</option>
-      </select>
-    </div>
+    <label>Depth:</label>
+    <select id="depth">
+      <option value="K1_000-045cm">K1 (0–45 cm)</option>
+      <option value="K2_046-091cm">K2 (46–91 cm)</option>
+      <option value="K3_092-116cm">K3 (92–116 cm)</option>
+      <option value="K4_117-289cm">K4 (117–289 cm)</option>
+    </select>
 
-    <div class="control">
-      <label for="opacity">Opacity</label>
-      <input id="opacity" type="range" min="0" max="100" value="90" />
-    </div>
+    <label>Opacity:</label>
+    <input type="range" id="opacity" min="0" max="1" step="0.1" value="0.8">
 
-    <div class="control">
-      <button id="loadBtn">Load</button>
-      <button id="clearBtn">Clear</button>
-    </div>
-
-    <div id="info" class="small">
-      <div>Click map to sample value — <span id="sampleValue">—</span></div>
-      <div class="small">Units: <span id="unitsText">see below</span></div>
-    </div>
-  </header>
+    <button id="loadBtn">Load Layer</button>
+  </div>
 
   <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- geotiff.js -->
-  <script src="https://unpkg.com/geotiff@2.11.5/dist/geotiff.browser.min.js"></script>
 
   <script src="map.js"></script>
   <script src="geotiff.js"></script>
