@@ -1,2 +1,2 @@
-# Global-soil-macronutrients
-Global Soil Macronutrients Maps
+# Indonesian-soil-macronutrients
+Indonesian Soil Macronutrients Maps
