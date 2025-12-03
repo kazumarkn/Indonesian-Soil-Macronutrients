@@ -2,7 +2,7 @@
    Leaflet app combining UI and the geoTIFF grid layer sampling code from geotiff.js
 */
 
-const repoBase = 'https://kazumarkn.github.io/Global-soil-macronutrients/cogs/'; 
+const repoBase = 'https://kazumarkn.github.io/Indonesian-Soil-Macronutrients/cogs/'; 
 
 // Map init
 const map = L.map('map').setView([20, 0], 2);
